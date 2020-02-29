@@ -1,6 +1,6 @@
 # svg2pts
 
-[![](http://meritbadge.herokuapp.com/svg2pts) ![](https://img.shields.io/crates/d/svg2pts.svg)](https://crates.io/crates/svg2pts)
+[![](http://meritbadge.herokuapp.com/svg2pts)](https://crates.io/crates/svg2pts)
 <!-- [![](https://docs.rs/svg2pts/badge.svg)](https://docs.rs/svg2pts/) -->
 
 Command line utility to convert the paths in a SVG to a list of points. All paths in the SVG is converted into a list of points
