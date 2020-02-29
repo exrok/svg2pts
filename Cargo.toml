@@ -10,6 +10,9 @@ description = "A Command line tool to convert a svg to a list of points."
 homepage = "https://github.com/exrok/svg2pts"
 repository = "https://github.com/exrok/svg2pts"
 categories = ["command-line-utilities"]
+exclude = [
+    "media/*"
+]
 
 [dependencies]
 structopt = { version = "0.3", default-features = false }
