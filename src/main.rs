@@ -5,34 +5,127 @@ use std::io::prelude::*;
 use std::io::{self, BufWriter};
 use usvg::{NodeKind, Options, PathSegment, Tree};
 
-use std::path::PathBuf;
-use structopt::StructOpt;
-
 type Pt = Vector2D<f64, lyon_geom::euclid::UnknownUnit>;
-
-#[derive(Debug, StructOpt)]
-#[structopt(
-    name = "svg2pts",
-    about = "Converts all paths in a svg to a list of points."
-)]
+#[derive(Default, Debug)]
 struct Opt {
     /// Set target distance between points, use default units of SVG.
     /// If distance == 0.0 (default), then the number points will be
     /// minimized while maintaining target accuracy.
-    #[structopt(short = "d", long = "distance", default_value = "0.0")]
+    //    #[structopt(short = "d", long = "distance", default_value = "0.0")]
     distance: f64,
 
     /// Set target accuracy for bezier curve.
-    #[structopt(short = "a", long = "accuracy", default_value = "0.1")]
+    //   #[structopt(short = "a", long = "accuracy", default_value = "0.1")]
     accuracy: f64,
 
     /// Input SVG file, stdin if not present
-    #[structopt(parse(from_os_str))]
-    input: Option<PathBuf>,
+    //  #[structopt(parse(from_os_str))]
+    input: Option<String>,
 
     /// Output file, stdout if not present
-    #[structopt(parse(from_os_str))]
-    output: Option<PathBuf>,
+    // #[structopt(parse(from_os_str))]
+    output: Option<String>,
+}
+
+fn print_usage() {
+    println!(
+        "{}",
+        r#"svg2pts 0.1.1
+Converts all paths in a svg to a list of points.
+
+USAGE:
+    svg2pts [OPTIONS] [ARGS]
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -a, --accuracy <accuracy>    Set target accuracy for bezier curve [default: 0.1]
+    -d, --distance <distance>    Set target distance between points, use default units of SVG. If distance == 0.0
+                                 (default), then the number points will be minimized while maintaining target accuracy
+                                 [default: 0.0]
+
+ARGS:
+    <input>     Input SVG file, stdin if not present
+    <output>    Output file, stdout if not present"#
+    )
+}
+
+fn print_basic_usage() {
+    println!(
+        "{}",
+        r#"
+USAGE:
+    svg2pts [OPTIONS] [ARGS]
+
+For more information try --help
+"#
+    )
+}
+
+#[macro_export]
+macro_rules! desc_err {
+    (  $x:expr, {  $($y:expr),* } ) => { if let Some(x) = $x { x } else {
+        eprint!("error: ");
+        eprintln!($($y,)*);
+        print_basic_usage();
+        return None;
+    }};
+}
+fn parse_args() -> Option<Opt> {
+    let mut opts = Opt::default();
+    opts.accuracy = 0.1;
+    let mut args = std::env::args().skip(1);
+
+    while let Some(arg) = args.next() {
+        if arg.starts_with('-') {
+            if arg == "-h" || arg == "--help" {
+                print_usage();
+                return None;
+            } else if arg == "-d" || arg == "--distance" {
+                let d = desc_err!(args.next(), {
+                    "Missing argument after: {}", arg
+                });
+                let dist = desc_err!( d.parse::<f64>().ok(), {
+                    "Invalid value for '{}' <f64>: invalid float literal", arg
+                });
+                if dist < 0.0 {
+                    eprintln!("error: {} is out of range, distance >= 0", arg);
+                    print_basic_usage();
+                    return None;
+                }
+                opts.distance = dist;
+            } else if arg == "-a" || arg == "--accuracy" {
+                let a = desc_err!(args.next(), {
+                    "Missing argument after: {}", arg
+                });
+                let acc = desc_err!( a.parse::<f64>().ok(), {
+                    "Invalid value for '{}' <f64>: invalid float literal", arg
+                });
+                if acc <= 0.0 {
+                    eprintln!("error: {} is out of range, accuracy > 0", arg);
+                    print_basic_usage();
+                    return None;
+                }
+                opts.accuracy = acc;
+            } else {
+                eprintln!("error: unknown flag {}", arg);
+                print_usage();
+                return None;
+            }
+        } else if opts.input.is_none() {
+            opts.input = Some(arg);
+        } else if opts.output.is_none() {
+            opts.output = Some(arg)
+        } else {
+            eprintln!("error: unexpected extra argument {}", arg);
+            print_usage();
+            return None;
+        }
+    }
+
+    Some(opts)
 }
 
 struct PathWriter<T: Write> {
@@ -58,7 +151,8 @@ impl<T: Write> PathWriter<T> {
         let mut buffer = ryu::Buffer::new();
         self.out.write_all(buffer.format(pt.x).as_bytes())?;
         self.out.write_all(&[b' '])?;
-        self.out.write_all(buffer.format(self.height-pt.y).as_bytes())?;
+        self.out
+            .write_all(buffer.format(self.height - pt.y).as_bytes())?;
         self.out.write_all(&[b'\n'])
     }
 
@@ -148,7 +242,13 @@ fn write_pts_from_paths<T: Write>(
 }
 
 fn write_svg_pts<T: Write>(acc: f64, svg: &[u8], mut writer: PathWriter<T>) -> io::Result<()> {
-    let tree = Tree::from_data(svg, &Options::default()).unwrap();
+    let tree = match Tree::from_data(svg, &Options::default()) {
+        Ok(tree) => tree,
+        Err(err) => {
+            eprintln!("error: Unable to parse svg fatal error:\n\t {}", err);
+            return Ok(());
+        }
+    };
     let height = tree.svg_node().view_box.rect.height();
     writer.height = height;
     for node in tree.root().descendants() {
@@ -163,18 +263,42 @@ fn write_svg_pts<T: Write>(acc: f64, svg: &[u8], mut writer: PathWriter<T>) -> i
 }
 
 fn main() -> std::io::Result<()> {
-    let opt = Opt::from_args();
+    let opt = if let Some(opt) = parse_args() {
+        opt
+    } else {
+        return Ok(());
+    };
 
     let mut svg_buf = Vec::default();
 
-    if let Some(filename) = opt.input {
-        File::open(filename)?.read_to_end(&mut svg_buf)?;
+    if let Some(ref filename) = opt.input {
+        let mut file = match File::open(filename) {
+            Ok(file) => file,
+            Err(err) => {
+                eprintln!(
+                    "error: could not read input file, `{}`:\n\t {}",
+                    filename, err
+                );
+                return Ok(());
+            }
+        };
+        file.read_to_end(&mut svg_buf)?;
     } else {
         std::io::stdin().read_to_end(&mut svg_buf)?;
     }
 
-    if let Some(filename) = opt.output {
-        let writer = PathWriter::new(BufWriter::new(File::create(filename)?), opt.distance);
+    if let Some(ref filename) = opt.output {
+        let file = match File::create(filename) {
+            Ok(file) => file,
+            Err(err) => {
+                eprintln!(
+                    "error: could create output file, `{}`:\n\t {}",
+                    filename, err
+                );
+                return Ok(());
+            }
+        };
+        let writer = PathWriter::new(BufWriter::new(file), opt.distance);
         write_svg_pts(opt.accuracy, &svg_buf, writer)?;
     } else {
         let writer = PathWriter::new(raw_stdout(), opt.distance);

@@ -1,6 +1,6 @@
 [package]
 name = "svg2pts"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Thomas Dagenais"]
 edition = "2018"
 readme = "README.md"
@@ -10,12 +10,15 @@ description = "A Command line tool to convert a svg to a list of points."
 homepage = "https://github.com/exrok/svg2pts"
 repository = "https://github.com/exrok/svg2pts"
 categories = ["command-line-utilities"]
-exclude = [
-    "media/*"
+include = [
+    "src/*",
+    "Cargo.lock",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
 ]
 
 [dependencies]
-structopt = { version = "0.3", default-features = false }
 usvg = "^0.9"
-lyon_geom = "^0.15"
+lyon_geom = { version = "^0.15", default-features = false }
 ryu = "^1.0"
