@@ -307,7 +307,7 @@ checksum = "0b8de496cf83d4ed58b6be86c3a275b8602f6ffe98d3024a869e124147a9a3ac"
 
 [[package]]
 name = "svg2pts"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "kurbo",
  "lyon_geom",
