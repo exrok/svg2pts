@@ -3,6 +3,7 @@ use lyon_geom::euclid::Vector2D;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
+use kurbo::common::solve_quadratic; // usvg already uses kurbo
 use usvg::prelude::*;
 use usvg::{NodeKind, Options, PathSegment, Tree, TransformedPath};
 
@@ -133,9 +134,33 @@ fn parse_args() -> Option<Opt> {
 struct PathWriter<T: Write> {
     start: Pt,
     current: Pt,
+    last: Pt,
     target_dist: f64,
     out: T,
     height: f64,
+}
+
+/// Finds if it exists the point on the line with distance, dist,
+/// from point c.
+fn pt_on_line_with_dist(dist: f64 ,c: Pt, line: (Pt,Pt)) -> Option<Pt> {
+    let w = line.0 - c;
+    let v = line.1 - line.0;
+    let rq = solve_quadratic(
+        w.x*w.x + w.y*w.y - dist*dist,
+        2.0*(v.x*w.x + v.y*w.y),
+        v.x*v.x + v.y*v.y,
+    );
+    let mut t_min = 2.0;
+    for t in rq {
+        if t >= -0.000001 && t <= 1.000001 && t < t_min {
+            t_min = t;
+        } 
+    }
+    if t_min <= 1.0 {
+        Some(line.0.lerp(line.1, t_min))
+    } else {
+        None
+    }
 }
 
 impl<T: Write> PathWriter<T> {
@@ -144,6 +169,7 @@ impl<T: Write> PathWriter<T> {
             target_dist,
             start: Pt::default(),
             current: Pt::default(),
+            last: Pt::default(),
             height: 0.0,
             out,
         }
@@ -161,19 +187,32 @@ impl<T: Write> PathWriter<T> {
     fn move_to(&mut self, pt: Pt) -> io::Result<()> {
         self.start = pt;
         self.current = pt;
+        self.last = pt;
         self.write_pt(pt)
     }
 
     /// Segments Line into distance lengthed segments
     fn line_to(&mut self, line_end: Pt) -> io::Result<()> {
         if self.target_dist == 0.0 {
+            self.last = line_end; //record last
             return self.write_pt(line_end);
         }
 
-        let line_dist = (self.current - line_end).length();
+        if let Some(pt) = pt_on_line_with_dist(self.target_dist, 
+                                               self.current,
+                                               (self.last, line_end)){
+            self.current = pt;
+            self.write_pt(self.current)?;
+        } else { //shouldn't happen unless numerical floats point inaccuracy occours  
+            self.current = self.last;
+            self.write_pt(self.current)?;
+        }
 
+        self.last = line_end; //record last
+
+        let line_dist = (self.current - line_end).length();
         if line_dist < self.target_dist {
-            return Ok(());
+            return Ok(()); //only ignore line if very close.
         }
 
         let td = self.target_dist / line_dist;
@@ -212,15 +251,12 @@ fn write_pts_from_paths<T: Write>(
     acc: f64,
     paths: impl Iterator<Item = PathSegment>,
 ) -> io::Result<()> {
-    let mut last_point = (0f64, 0f64);
     for seg in paths {
         match seg {
             PathSegment::MoveTo { x, y } => {
-                last_point = (x, y);
                 writer.move_to((x, y).into())?;
             }
             PathSegment::LineTo { x, y } => {
-                last_point = (x, y);
                 writer.line_to((x, y).into())?;
             }
             PathSegment::ClosePath => {
@@ -228,14 +264,13 @@ fn write_pts_from_paths<T: Write>(
             }
             PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
                 let bez = CubicBezierSegment {
-                    from: last_point.into(),
+                    from: (writer.last.x, writer.last.y).into(),
                     ctrl1: (x1, y1).into(),
                     ctrl2: (x2, y2).into(),
                     to: (x, y).into(),
                 };
                 for pt in bez.flattened(acc) {
                     writer.line_to(pt.to_vector())?;
-                    last_point = (pt.x, pt.y);
                 }
             }
         }
@@ -268,6 +303,7 @@ fn write_svg_pts<T: Write>(acc: f64, svg: &[u8], mut writer: PathWriter<T>) -> i
 
     Ok(())
 }
+
 
 fn main() -> std::io::Result<()> {
     let opt = if let Some(opt) = parse_args() {

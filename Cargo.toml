@@ -22,3 +22,4 @@ include = [
 usvg = "^0.9"
 lyon_geom = { version = "^0.15", default-features = false }
 ryu = "^1.0"
+kurbo = "^0.5"
