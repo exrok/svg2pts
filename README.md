@@ -3,13 +3,6 @@
 [![](https://meritbadge.herokuapp.com/svg2pts)](https://crates.io/crates/svg2pts)
 <!-- [![](https://docs.rs/svg2pts/badge.svg)](https://docs.rs/svg2pts/) -->
 
-<img
-  src="https://raw.githubusercontent.com/exrok/svg2pts/master/media/rustlogo_osc.gif"
-  alt="Rust logo svg converted to pts and display on oscilloscope."
-  width="35%"
-  align="right"
-/>
-
 Command line utility to convert the paths in a SVG to a list of points. All paths in the SVG is converted into a list of points
 curve interpolation is controlled by command line arguments. 
 
@@ -94,7 +87,7 @@ src="https://raw.githubusercontent.com/exrok/svg2pts/master/media/plot3.png"
 
 <img
 width="490"
-src="https://raw.githubusercontent.com/exrok/svg2pts/master/media/plot3.png"
+src="https://raw.githubusercontent.com/exrok/svg2pts/master/media/plot4.png"
 />
 
 ### SVG converted to points then displayed on an oscilloscope
