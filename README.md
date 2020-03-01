@@ -3,8 +3,9 @@
 [![](https://meritbadge.herokuapp.com/svg2pts)](https://crates.io/crates/svg2pts)
 <!-- [![](https://docs.rs/svg2pts/badge.svg)](https://docs.rs/svg2pts/) -->
 
-Command line utility to convert the paths in a SVG to a list of points. All paths in the SVG is converted into a list of points
+Command line utility to convert the paths in a SVG to a list of points. All paths in the SVG are converted into a list of points with
 curve interpolation is controlled by command line arguments. 
+Paths with no stroke nor fill are ignored. Output is a sequence of points, `X Y\n`
 
 
 * [Installation](#installation)
@@ -25,8 +26,9 @@ This will make the svg2pts binary available in your cargo binary directory; usua
 ## Usage
 
 ```text
-svg2pts 0.1.2
-Converts all paths in a svg to a list of points.
+svg2pts 0.1.3
+Converts all paths in a svg to a list of points. Paths
+with no stroke nor fill are ignored. Output is a sequence of points, `X Y\n`. 
 
 USAGE:
     svg2pts [OPTIONS] [ <input> [<output>] ]

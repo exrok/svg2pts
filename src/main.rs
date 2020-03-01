@@ -33,7 +33,7 @@ struct Opt {
 fn print_usage() {
     println!(
         "{}",
-        r#"svg2pts 0.1.2
+        r#"svg2pts 0.1.3
 Converts all paths in a svg to a list of points. Will ignore paths
 with no stroke or fill. Output is a sequence of points, `X Y\n`. 
 
@@ -203,7 +203,12 @@ impl<T: Write> PathWriter<T> {
                                                (self.last, line_end)){
             self.current = pt;
             self.write_pt(self.current)?;
-        } else { //shouldn't happen unless numerical floats point inaccuracy occours  
+        } else {   
+            if (self.last - self.current).length() < self.target_dist {
+                self.last = line_end; 
+                return Ok(());
+            }
+            //shouldn't happen unless numerical floats point inaccuracy occours
             self.current = self.last;
             self.write_pt(self.current)?;
         }
