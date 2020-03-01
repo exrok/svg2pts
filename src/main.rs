@@ -3,9 +3,11 @@ use lyon_geom::euclid::Vector2D;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
-use usvg::{NodeKind, Options, PathSegment, Tree};
+use usvg::prelude::*;
+use usvg::{NodeKind, Options, PathSegment, Tree, TransformedPath};
 
 type Pt = Vector2D<f64, lyon_geom::euclid::UnknownUnit>;
+
 #[derive(Default, Debug)]
 struct Opt {
     /// Set target distance between points, use default units of SVG.
@@ -30,20 +32,20 @@ struct Opt {
 fn print_usage() {
     println!(
         "{}",
-        r#"svg2pts 0.1.1
-Converts all paths in a svg to a list of points.
+        r#"svg2pts 0.1.2
+Converts all paths in a svg to a list of points. Will ignore paths
+with no stroke or fill. Output is a sequence of points, `X Y\n`. 
 
 USAGE:
-    svg2pts [OPTIONS] [ARGS]
+    svg2pts [OPTIONS] [ <input> [ <output> ] ]
 
 FLAGS:
     -h, --help       Prints help information
-    -V, --version    Prints version information
 
 OPTIONS:
     -a, --accuracy <accuracy>    Set target accuracy for bezier curve [default: 0.1]
-    -d, --distance <distance>    Set target distance between points, use default units of SVG. If distance == 0.0
-                                 (default), then the number points will be minimized while maintaining target accuracy
+    -d, --distance <distance>    Set target distance between points, depends on DPI of SVG.
+                                 If distance == 0.0 point distance not normalized.
                                  [default: 0.0]
 
 ARGS:
@@ -57,7 +59,7 @@ fn print_basic_usage() {
         "{}",
         r#"
 USAGE:
-    svg2pts [OPTIONS] [ARGS]
+    svg2pts [OPTIONS] [ <input> [<output>] ]
 
 For more information try --help
 "#
@@ -117,7 +119,7 @@ fn parse_args() -> Option<Opt> {
         } else if opts.input.is_none() {
             opts.input = Some(arg);
         } else if opts.output.is_none() {
-            opts.output = Some(arg)
+            opts.input = Some(arg)
         } else {
             eprintln!("error: unexpected extra argument {}", arg);
             print_usage();
@@ -208,23 +210,23 @@ fn raw_stdout() -> impl Write {
 fn write_pts_from_paths<T: Write>(
     writer: &mut PathWriter<T>,
     acc: f64,
-    paths: &[PathSegment],
+    paths: impl Iterator<Item = PathSegment>,
 ) -> io::Result<()> {
     let mut last_point = (0f64, 0f64);
     for seg in paths {
         match seg {
-            &PathSegment::MoveTo { x, y } => {
+            PathSegment::MoveTo { x, y } => {
                 last_point = (x, y);
                 writer.move_to((x, y).into())?;
             }
-            &PathSegment::LineTo { x, y } => {
+            PathSegment::LineTo { x, y } => {
                 last_point = (x, y);
                 writer.line_to((x, y).into())?;
             }
-            &PathSegment::ClosePath => {
+            PathSegment::ClosePath => {
                 writer.close_path()?;
             }
-            &PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
+            PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
                 let bez = CubicBezierSegment {
                     from: last_point.into(),
                     ctrl1: (x1, y1).into(),
@@ -249,12 +251,17 @@ fn write_svg_pts<T: Write>(acc: f64, svg: &[u8], mut writer: PathWriter<T>) -> i
             return Ok(());
         }
     };
+
     let height = tree.svg_node().view_box.rect.height();
     writer.height = height;
     for node in tree.root().descendants() {
         if let NodeKind::Path(ref path) = *node.borrow() {
-            for i in path.data.subpaths() {
-                write_pts_from_paths(&mut writer, acc, &i)?;
+            if path.fill.is_none() && path.stroke.is_none() {
+                continue;
+            }
+            for subpaths in path.data.subpaths() {
+                write_pts_from_paths(&mut writer, acc,
+                  TransformedPath::new(&subpaths, node.transform()))?;
             }
         }
     }
@@ -292,7 +299,7 @@ fn main() -> std::io::Result<()> {
             Ok(file) => file,
             Err(err) => {
                 eprintln!(
-                    "error: could create output file, `{}`:\n\t {}",
+                    "error: could not create output file, `{}`:\n\t {}",
                     filename, err
                 );
                 return Ok(());
