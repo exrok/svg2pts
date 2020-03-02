@@ -37,7 +37,7 @@ This will make the svg2pts binary available in your cargo binary directory; usua
 ## Usage
 
 ```text
-svg2pts 0.1.3
+svg2pts 0.1.4
 Converts all paths in a svg to a list of points. Paths
 with no stroke nor fill are ignored. Output is a sequence of points, `X Y\n`. 
 

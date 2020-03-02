@@ -33,7 +33,7 @@ struct Opt {
 fn print_usage() {
     println!(
         "{}",
-        r#"svg2pts 0.1.3
+        r#"svg2pts 0.1.4
 Converts all paths in a svg to a list of points. Will ignore paths
 with no stroke or fill. Output is a sequence of points, `X Y\n`. 
 
