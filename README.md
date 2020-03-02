@@ -10,19 +10,30 @@ Paths with no stroke nor fill are ignored. Output is a sequence of points, `X Y\
 
 * [Installation](#installation)
 * [Usage](#usage)
-* [Examples](#usage)
+* [Changelog](#Changelog)
+* [Examples](#Examples)
 
 <a name="Installation"></a>
 
 ## Installation
 
-Using cargo: 
+Using **snaps**: 
+
+```sh
+snap install svg2pts
+```
+
+Using **cargo**: 
 ```sh
 cargo install svg2pts
 ```
-
+OR with enabled text feature, requires harfbuzz,
+```sh
+cargo install svg2pts --features=text
+```
 This will make the svg2pts binary available in your cargo binary directory; usually `~/.cargo/bin`.
 
+<a name="Usage"></a>
 ## Usage
 
 ```text
@@ -47,6 +58,18 @@ ARGS:
     <output>    Output file, stdout if not present"#
 ```
 
+<a name="Changelog"></a>
+## Changelog
+
+- **v0.1.3-1**
+  - Make text support an optional feature, making the harfbuzz dependency optional.
+- **v0.1.3**  
+  - Improved distance normalization: The points generated more accurately follow the paths in the SVG at a variety of distance parameters.
+  - Hidden path removal: Paths which have no stroke nor fill value are ignored when generating points.
+- **v0.1.2** :
+   - Transformations now applied: Previously path transformations where ignored.
+
+<a name="Examples"></a>
 ## Examples
 
 <p align="center">
