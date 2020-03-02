@@ -61,7 +61,7 @@ ARGS:
 <a name="Changelog"></a>
 ## Changelog
 
-- **v0.1.3-1**
+- **v0.1.4**
   - Make text support an optional feature, making the harfbuzz dependency optional.
 - **v0.1.3**  
   - Improved distance normalization: The points generated more accurately follow the paths in the SVG at a variety of distance parameters.
