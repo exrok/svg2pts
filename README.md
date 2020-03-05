@@ -37,7 +37,7 @@ This will make the svg2pts binary available in your cargo binary directory; usua
 ## Usage
 
 ```text
-svg2pts 0.1.4
+svg2pts 0.1.5
 Converts all paths in a svg to a list of points. Paths
 with no stroke nor fill are ignored. Output is a sequence of points, `X Y\n`. 
 
@@ -48,7 +48,8 @@ FLAGS:
     -h, --help       Prints help information
 
 OPTIONS:
-    -a, --accuracy <accuracy>    Set target accuracy for bezier curve [default: 0.1]
+    -a, --accuracy <accuracy>    Set tolerance threshold for bezier curve approximation, 
+                                 lower -> higher quality [default: min(<distance>/25.0,0.05)]
     -d, --distance <distance>    Set target distance between points, depends on DPI of SVG.
                                  If distance == 0.0 point distance not normalized.
                                  [default: 0.0]
@@ -61,12 +62,15 @@ ARGS:
 <a name="Changelog"></a>
 ## Changelog
 
+- **v0.1.5**
+  - Fix: Commandline argument, output file bug.
+  - Change: Lower tolerance threshold for improved default accuracy and scale thread threshold for small disances.
 - **v0.1.4**
   - Make text support an optional feature, making the harfbuzz dependency optional.
-- **v0.1.3**  
+- **v0.1.3**
   - Improved distance normalization: The points generated more accurately follow the paths in the SVG at a variety of distance parameters.
   - Hidden path removal: Paths which have no stroke nor fill value are ignored when generating points.
-- **v0.1.2** :
+- **v0.1.2**
    - Transformations now applied: Previously path transformations where ignored.
 
 <a name="Examples"></a>

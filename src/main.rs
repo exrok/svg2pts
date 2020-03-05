@@ -19,7 +19,7 @@ struct Opt {
 
     /// Set target accuracy for bezier curve.
     //   #[structopt(short = "a", long = "accuracy", default_value = "0.1")]
-    accuracy: f64,
+    accuracy: Option<f64>,
 
     /// Input SVG file, stdin if not present
     //  #[structopt(parse(from_os_str))]
@@ -33,7 +33,7 @@ struct Opt {
 fn print_usage() {
     println!(
         "{}",
-        r#"svg2pts 0.1.4
+        r#"svg2pts 0.1.5
 Converts all paths in a svg to a list of points. Will ignore paths
 with no stroke or fill. Output is a sequence of points, `X Y\n`. 
 
@@ -44,8 +44,9 @@ FLAGS:
     -h, --help       Prints help information
 
 OPTIONS:
-    -a, --accuracy <accuracy>    Set target accuracy for bezier curve [default: 0.1]
-    -d, --distance <distance>    Set target distance between points, depends on DPI of SVG.
+    -a, --accuracy <accuracy>    Set tolerance threshold for bezier curve approximation, 
+                                 lower -> higher quality [default: 0.1]
+    -d, --distance <distance>    Set Target distance between points, depends on DPI of SVG.
                                  If distance == 0.0 point distance not normalized.
                                  [default: 0.0]
 
@@ -78,7 +79,6 @@ macro_rules! desc_err {
 }
 fn parse_args() -> Option<Opt> {
     let mut opts = Opt::default();
-    opts.accuracy = 0.1;
     let mut args = std::env::args().skip(1);
 
     while let Some(arg) = args.next() {
@@ -111,7 +111,7 @@ fn parse_args() -> Option<Opt> {
                     print_basic_usage();
                     return None;
                 }
-                opts.accuracy = acc;
+                opts.accuracy = Some(acc);
             } else {
                 eprintln!("error: unknown flag {}", arg);
                 print_usage();
@@ -120,7 +120,7 @@ fn parse_args() -> Option<Opt> {
         } else if opts.input.is_none() {
             opts.input = Some(arg);
         } else if opts.output.is_none() {
-            opts.input = Some(arg)
+            opts.output = Some(arg)
         } else {
             eprintln!("error: unexpected extra argument {}", arg);
             print_usage();
@@ -243,9 +243,14 @@ impl<T: Write> PathWriter<T> {
 /// overhead, on unix this is trival to work around.
 #[cfg(target_family = "unix")]
 fn raw_stdout() -> impl Write {
-    use std::os::unix::io::FromRawFd;
-    BufWriter::new(unsafe { File::from_raw_fd(1) })
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+    let stdout = AsRawFd::as_raw_fd(&io::stdout());
+    let stdout: File = unsafe {
+        FromRawFd::from_raw_fd(stdout)
+    };
+    BufWriter::new(stdout)
 }
+
 #[cfg(not(target_family = "unix"))]
 fn raw_stdout() -> impl Write {
     stdout() //sucks to be you
@@ -309,7 +314,6 @@ fn write_svg_pts<T: Write>(acc: f64, svg: &[u8], mut writer: PathWriter<T>) -> i
     Ok(())
 }
 
-
 fn main() -> std::io::Result<()> {
     let opt = if let Some(opt) = parse_args() {
         opt
@@ -317,6 +321,10 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     };
 
+    fn min(a: f64, b: f64) -> f64 {
+        if a < b { a } else { b }
+    }
+    let accuracy = opt.accuracy.unwrap_or(min(opt.distance / 25.0, 0.05));
     let mut svg_buf = Vec::default();
 
     if let Some(ref filename) = opt.input {
@@ -347,10 +355,10 @@ fn main() -> std::io::Result<()> {
             }
         };
         let writer = PathWriter::new(BufWriter::new(file), opt.distance);
-        write_svg_pts(opt.accuracy, &svg_buf, writer)?;
+        write_svg_pts(accuracy, &svg_buf, writer)?;
     } else {
         let writer = PathWriter::new(raw_stdout(), opt.distance);
-        write_svg_pts(opt.accuracy, &svg_buf, writer)?;
+        write_svg_pts(accuracy, &svg_buf, writer)?;
     }
 
     Ok(())
