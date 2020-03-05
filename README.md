@@ -64,7 +64,7 @@ ARGS:
 
 - **v0.1.5**
   - Fix: Commandline argument, output file bug.
-  - Change: Lower tolerance threshold for improved default accuracy and scale thread threshold for small disances.
+  - Change: Lower tolerance threshold for improved default accuracy and scale  threshold for small distances.
 - **v0.1.4**
   - Make text support an optional feature, making the harfbuzz dependency optional.
 - **v0.1.3**
