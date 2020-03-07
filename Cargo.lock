@@ -110,6 +110,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "error-chain"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d371106cc88ffdfb1eabd7111e432da544f16f3e2d7bf1dfe8bf575f1df045cd"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "euclid"
 version = "0.20.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -309,6 +318,7 @@ checksum = "0b8de496cf83d4ed58b6be86c3a275b8602f6ffe98d3024a869e124147a9a3ac"
 name = "svg2pts"
 version = "0.1.5"
 dependencies = [
+ "error-chain",
  "kurbo",
  "lyon_geom",
  "ryu",
@@ -376,6 +386,12 @@ dependencies = [
  "unicode-vo",
  "xmlwriter",
 ]
+
+[[package]]
+name = "version_check"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "078775d0255232fb988e6fccf26ddc9d1ac274299aaedcedce21c6f72cc533ce"
 
 [[package]]
 name = "xmlparser"

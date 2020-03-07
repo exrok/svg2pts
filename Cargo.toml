@@ -26,4 +26,5 @@ text = ["usvg/text"]
 usvg = {version = "^0.9", default-features = false}
 lyon_geom = { version = "^0.15", default-features = false }
 ryu = "^1.0"
+error-chain = {version = "^0.12", default-features = false}
 kurbo = "^0.5"
