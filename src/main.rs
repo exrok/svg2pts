@@ -3,17 +3,9 @@ use lyon_geom::euclid::Vector2D;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io;
-use usvg::prelude::*;
 use kurbo::common::solve_quadratic; // usvg already uses kurbo
-use usvg::{NodeKind, Options, PathSegment, Tree, TransformedPath};
-
-use error_chain::bail;
-mod errors {
-    use error_chain::error_chain;
-    error_chain! {
-    }
-}
-use errors::*;
+use usvg::{NodeKind, PathSegment, Tree, TransformedPath, NodeExt};
+type Ret<T> = Result<T, Box<dyn std::error::Error>>;
 type Pt = Vector2D<f64, lyon_geom::euclid::UnknownUnit>;
 
 #[derive(Default, Debug)]
@@ -29,6 +21,8 @@ struct Opt {
     accuracy: Option<f64>,
 
     points: u64,
+
+    var_distance: bool,
 
     /// Input SVG file, stdin if not present
     //  #[structopt(parse(from_os_str))]
@@ -83,7 +77,7 @@ For more information try --help
     )
 }
 
-fn parse_args() -> Result<Opt> {
+fn parse_args() -> Ret<Opt> {
     let mut opts = Opt::default();
     let mut args = std::env::args().skip(1);
 
@@ -93,53 +87,53 @@ fn parse_args() -> Result<Opt> {
                 print_usage();
                 ::std::process::exit(0);
             } else if arg == "-d" || arg == "--distance" {
-                let d = args.next().chain_err(|| {
+                let d = args.next().ok_or_else(|| {
                     format!("Missing argument after: {}", arg)
                 })?; 
 
-                let dist = d.parse::<f64>().chain_err(|| {
-                    format!("Invalid value '{}' <f64>", arg)
+                let dist = d.parse::<f64>().map_err(|err| {
+                    format!("{err}: Invalid value '{}' <f64>", arg)
                 })?;
 
                 if dist < 0.0 {
-                    bail!("{} is out of range, distance >= 0", arg);
+                    return Err(format!("{} is out of range, distance >= 0", arg).into());
                 }
 
                 opts.distance = dist;
             } else if arg == "-p" || arg == "--points" {
-                let p = args.next().chain_err(|| {
+                let p = args.next().ok_or_else(|| {
                     format!("Missing argument after: {}", arg)
                 })?; 
 
-                let pts = p.parse::<u64>().chain_err(|| {
-                    format!("Invalid value '{}' <u64>", arg)
+                let pts = p.parse::<u64>().map_err(|err| {
+                    format!("{err}: Invalid value '{}' <u64>", arg)
                 })?;
 
                 opts.points = pts;
 
             } else if arg == "-a" || arg == "--accuracy" {
-                let a = args.next().chain_err(|| {
+                let a = args.next().ok_or_else(|| {
                     format!("Missing argument after: {}", arg)
                 })?;
 
-                let acc = a.parse::<f64>().chain_err(|| {
-                    format!("Invalid value '{}' <f64>", arg)
+                let acc = a.parse::<f64>().map_err(|err| {
+                    format!("{err}: Invalid value '{}' <f64>", arg)
                 })?;
 
                 if acc <= 0.0 {
-                    bail!("{} is out of range, accuracy >= 0", arg);
+                    return Err(format!("{} is out of range, accuracy >= 0", arg).into());
                 }
                 opts.accuracy = Some(acc);
             } else {
                 print_basic_usage();
-                bail!("unknown flag {}", arg);
+                return Err(format!("unknown flag {}", arg).into());
             }
         } else if opts.input.is_none() {
             opts.input = Some(arg);
         } else if opts.output.is_none() {
             opts.output = Some(arg)
         } else {
-            bail!("unexpected extra argument {}", arg);
+            return Err(format!("unexpected extra argument {}", arg).into());
         }
     }
 
@@ -148,23 +142,25 @@ fn parse_args() -> Result<Opt> {
 
 
 struct PathWriter {
-    start: Pt,
-    current: Pt,
-    last: Pt,
-    accuracy: f64,
-    target_dist: f64,
     out: PointBufWriter,
-    height: f64,
+    var_distance: bool,
+    start: Pt,         // Start of the curve
+    at: Pt,            // Last point written
+    prev: Pt,          // Previous point submited to writer
+    accuracy: f64,     // Tolerance for beizer curve approx. 
+    target_dist: f64,  // If 0.0 don't normalize distance
+    height: f64,       // For flipping svg
 }
 
 impl PathWriter {
-    fn new(out: PointBufWriter, target_dist: f64, accuracy: f64, height: f64) -> PathWriter {
+    fn new(out: PointBufWriter, target_dist: f64, accuracy: f64, height: f64, var_distance: bool) -> PathWriter {
         PathWriter {
             target_dist,
             start: Pt::default(),
-            current: Pt::default(),
-            last: Pt::default(),
+            at: Pt::default(),
+            prev: Pt::default(),
             accuracy,
+            var_distance,
             height,
             out,
         }
@@ -174,29 +170,26 @@ impl PathWriter {
         self.out.write(pt.x, self.height - pt.y)
     }
 
-    fn move_to(&mut self, pt: Pt) -> io::Result<()> {
-        self.start = pt;
-        self.current = pt;
-        self.last = pt;
-        self.write_pt(pt)
-    }
-
     fn write_path(&mut self, path: impl Iterator<Item = PathSegment>) -> io::Result<()> {
         use PathSegment::*;
         for seg in path {
             match seg {
                 MoveTo { x, y } => {
-                    self.move_to((x, y).into())?;
+                    let pt = (x,y).into();
+                    self.start = pt;
+                    self.at = pt;
+                    self.prev = pt;
+                    self.write_pt(pt)?;
                 }
                 LineTo { x, y } => {
                     self.line_to((x, y).into())?;
                 }
                 ClosePath => {
-                    self.close_path()?;
+                    self.line_to(self.start)?;
                 }
                 CurveTo { x1, y1, x2, y2, x, y } => {
                     let bez = CubicBezierSegment {
-                        from: (self.last.x, self.last.y).into(),
+                        from: (self.prev.x, self.prev.y).into(),
                         ctrl1: (x1, y1).into(),
                         ctrl2: (x2, y2).into(),
                         to: (x, y).into(),
@@ -211,68 +204,62 @@ impl PathWriter {
     }
     /// Segments Line into distance lengthed segments
     fn line_to(&mut self, line_end: Pt) -> io::Result<()> {
-        if self.target_dist == 0.0 {
-            self.last = line_end; //record last
-            return self.write_pt(line_end);
+        let line_start = self.prev;
+        self.prev = line_end;
+        if self.target_dist == 0.0 { //Don't normalize distance
+            return self.write_pt(line_end)
         }
-
-        // Find point on line (self.last, line_end) such that is
-        // target_dist away from self.current
-        let w = line_end - self.current;
-        let v = self.last - line_end;
-        let c = w.square_length() - self.target_dist* self.target_dist;
-        if c < 0.0 { // line_end is two close 
-            self.last = line_end; 
-            return Ok(());
-        }
-
-        let intersect = solve_quadratic(
-            c,
-            2.0*(v.dot(w)),
-            v.square_length()
-        );
-
-        let mut t_min = 2.0;
-        for t in intersect {
-            if t >= -0.000001 && t <= 1.000001 && t < t_min {
-                t_min = t;
-            } 
-        }
-
-        if t_min <= 1.0 {
-            self.current = line_end.lerp(self.last, t_min);
-            self.write_pt(self.current)?;
-        } else {
-            // line_end is two close; shouldn't happen since we
-            // checked above we have extended bounds on t
-            // to account for numerical imprecision 
-            self.last = line_end; 
-            return Ok(());
-        }
-
-        self.last = line_end; //record last
-
-        let line_dist = (self.current - line_end).length();
-        if line_dist < self.target_dist {
-            return Ok(()); //only ignore line if very close.
-        }
-
-        let td = self.target_dist / line_dist;
-
-        let line_start = self.current;
-        for i in 1.. {
-            let t = (i as f64) * td;
-            if t >= 1.0 {
-                break;
+        if self.var_distance { //different method
+            let line_dist = (self.at - line_end).length();
+            let pts = (line_dist/self.target_dist).round();
+            if pts >= 2.0 {
+                let t_delta = 1.0 / pts;
+                for i in 1..(1.0/t_delta) as i64 {
+                    self.write_pt(self.at.lerp(line_end, (i as f64) * t_delta))?;
+                }
             }
-            self.current = line_start.lerp(line_end, t);
-            self.write_pt(self.current)?;
+            self.write_pt(line_end)?;
+            self.at = line_end;
+            return Ok(());
         }
-        Ok(())
-    }
 
-    fn close_path(&mut self) -> io::Result<()> {
-        self.line_to(self.start)
+        {   // Find point on line (self.last, line_end) such that is
+            // target_dist away from self.current
+
+            let w = line_end - self.at;
+            let v = line_start - line_end;
+            let c = w.square_length() - self.target_dist*self.target_dist;
+            if c < 0.0 { // line_end is two close 
+                return Ok(());
+            }
+
+            let mut t_min = 1.0;
+             solve_quadratic(
+                c, 2.0*(v.dot(w)), v.square_length()
+             ).iter().for_each(|&t| if t >= -0.0000001 && t < t_min {
+                 t_min = t;
+             });
+
+            //Move onto line
+            self.at = line_end.lerp(line_start, t_min);
+            self.write_pt(self.at)?;
+        }
+
+        // Calculate additional points on lines 
+        let line_dist = (self.at - line_end).length();
+        if line_dist < self.target_dist { //already to close to end of line.
+            return Ok(()); 
+        }
+
+        let t_delta = self.target_dist / line_dist;
+
+        let line_start = self.at; 
+        for i in 1..=(1.0/t_delta) as i64 {
+            self.at = line_start.lerp(line_end, (i as f64) * t_delta);
+            self.write_pt(self.at)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -399,30 +386,30 @@ impl Drop for PointBufWriter {
 }
 
 
-fn run() -> Result<()> {
+fn run() -> Ret<()> {
     let opt = parse_args()?;
 
     let mut svg_buf = Vec::default();
 
     if let Some(ref filename) = opt.input {
         File::open(filename)
-            .chain_err(|| "Failed to open input")?
+            .map_err(|err| format!("{err}: Failed to open input"))?
             .read_to_end(&mut svg_buf)
-            .chain_err(|| "Failed to read input")?;
+            .map_err(|err| format!("{err}: Failed to open input"))?;
     } else {
         std::io::stdin().read_to_end(&mut svg_buf)
-            .chain_err(|| "Failed reading from stdin")?;
+            .map_err(|err| format!("{err}: Failed to reading from stdin"))?;
     }
 
     let pt_writer = if let Some(ref filename) = opt.output {
         PointBufWriter::new(Box::new(File::create(filename)
-                                     .chain_err(|| "Failed to open output")?))
+                                     .map_err(|err| format!("{err}: Failed to open output"))?))
     } else {
         PointBufWriter::new(Box::new(raw_stdout()))
     };
 
-    let tree = Tree::from_data(&svg_buf, &Options::default())
-        .chain_err(|| "unable to parse svg")?;
+    let tree = Tree::from_data(&svg_buf, &usvg::Options::default().to_ref())
+        .map_err(|err| format!("{err}: Unable to parse svg"))?;
 
     let paths = extract_paths(&tree);
 
@@ -442,11 +429,11 @@ fn run() -> Result<()> {
     } else {
         distance / 25.0
     });
-    let mut writer = PathWriter::new(pt_writer, distance, accuracy, height);
+    let mut writer = PathWriter::new(pt_writer, distance, accuracy, height, opt.var_distance);
 
     for (path, transform) in &paths {
         writer.write_path(TransformedPath::new(path, *transform))
-            .chain_err(|| "failed writing points")?;
+            .map_err(|err| format!("{err}: failed to write points"))?;
     }
 
     Ok(())
@@ -455,10 +442,6 @@ fn run() -> Result<()> {
 fn main() {
     if let Err(ref e) = run() {
         eprint!("error: {}: ", e);
-
-        for e in e.iter().skip(1) {
-            eprintln!("{}", e);
-        }
 
         std::process::exit(1);
     }

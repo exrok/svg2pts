@@ -2,7 +2,7 @@
 name = "svg2pts"
 version = "0.1.5"
 authors = ["Thomas Dagenais"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 keywords = ["svg", "cli", "converter"]
 license = "MIT"
@@ -23,8 +23,13 @@ default = []
 text = ["usvg/text"]
 
 [dependencies]
-usvg = {version = "^0.9", default-features = false}
-lyon_geom = { version = "^0.15", default-features = false }
 ryu = "^1.0"
-error-chain = {version = "^0.12", default-features = false}
-kurbo = "^0.5"
+usvg = {version = "^0.23", default-features = false}
+lyon_geom = { version = "^1.0", default-features = false }
+kurbo = "^0.8"
+
+[dev-dependencies]
+assert_cmd = "0.12"
+predicates = "^1.0"
+tempfile = "3"
+lazy_static ="^1.4"
